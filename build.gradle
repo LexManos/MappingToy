@@ -1,0 +1,140 @@
+plugins {
+  id 'com.github.ben-manes.versions' version '0.27.0'
+  id 'net.minecrell.licenser' version '0.4.1'
+  id 'org.ajoberstar.grgit' version '4.0.0-rc.1'
+  id 'com.github.johnrengelman.shadow' version '5.1.0'
+  id 'maven'
+  id 'maven-publish'
+  id 'java'
+  id 'eclipse'
+  id 'idea'
+}
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://files.minecraftforge.net/maven' }
+}
+
+dependencies {
+    compile 'org.ow2.asm:asm:7.2'
+    compile 'org.ow2.asm:asm-commons:7.2'
+    compile 'org.ow2.asm:asm-tree:7.2'
+    compile 'org.ow2.asm:asm-util:7.2'
+    compile 'net.sf.jopt-simple:jopt-simple:6.0-alpha-3'
+    compile 'com.google.code.gson:gson:2.8.6'
+    compile 'net.minecraftforge:mergetool:1.0.10'
+    compile 'net.minecraftforge:srgutils:0.2.7'
+}
+
+ext {
+    MAIN_CLASS = 'net.minecraftforge.lex.mappingtoy.MappingToy'
+    GIT_REPO = 'LexManos/MappingToy'
+}
+
+group = 'net.minecraftforge.lex'
+version = gitVersion()
+targetCompatibility = sourceCompatibility = compileJava.sourceCompatibility = compileJava.targetCompatibility = '1.8'
+
+def rsplit(str, del) {
+    def idx = str.lastIndexOf(del)
+    return idx == -1 ? [str, ''] : [str.substring(0, idx), str.substring(idx+1)]
+}
+
+def gitVersion() {
+    def raw = grgit?.describe(longDescr: true, tags:true)
+    def (desc, hash) = rsplit(raw == null ? 'unknown-offset-hash' : raw, '-')
+    def (tag, offset) = rsplit(desc, '-')
+    project.ext.SPEC_VERSION = tag
+    return "${tag}.${offset}"
+}
+
+license {
+  header project.file('LICENSE-header.txt')
+  newLine false
+}
+
+ext {
+    MANIFEST = manifest{
+        if (MAIN_CLASS != null)
+            attributes('Main-Class': MAIN_CLASS)
+        attributes([
+            'Specification-Title':      project.name,
+            'Specification-Vendor':     'Forge Development LLC',
+            'Specification-Version':    SPEC_VERSION,
+            'Implementation-Title':     project.name,
+            'Implementation-Version':   project.version,
+            'Implementation-Vendor':    'Forge Development LLC'
+        ] as LinkedHashMap, project.group.replaceAll('\\.', '/') + '/' + project.name + '/')
+    }
+}
+
+compileJava {
+    options.encoding = 'UTF-8'
+}
+
+task sourcesJar(type: Jar, dependsOn: classes) {
+    classifier = 'sources'
+    from sourceSets.main.allSource
+    manifest.from(MANIFEST)
+}
+
+artifacts {
+    archives sourcesJar
+    archives shadowJar
+}
+
+jar {
+    manifest.from(MANIFEST)
+}
+
+shadowJar {
+    minimize()
+    classifier 'all'
+    manifest.from(MANIFEST)
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            artifact sourcesJar
+            artifact jar
+            artifact shadowJar
+            pom {
+                name = project.archivesBaseName
+                packaging = 'jar'
+                url = "https://github.com/${GIT_REPO}"
+
+                scm {
+                    url = "https://github.com/${GIT_REPO}"
+                    connection = "scm:git:git://github.com/${GIT_REPO}.git"
+                    developerConnection = "scm:git:git@github.com:${GIT_REPO}.git"
+                }
+
+                issueManagement {
+                    system = 'github'
+                    url = "https://github.com/${GIT_REPO}/issues"
+                }
+
+                developers {
+                    developer {
+                        id = 'LexManos'
+                        name = 'Lex Manos'
+                    }
+                }
+            }
+        }
+    }
+    repositories {
+        maven {
+            if (project.hasProperty('forgeMavenPassword')) {
+                credentials {
+                    username project.properties.forgeMavenUser
+                    password project.properties.forgeMavenPassword
+                }
+                url 'https://files.minecraftforge.net/maven/manage/upload'
+            } else {
+                url 'file://' + rootProject.file('repo').getAbsolutePath()
+            }
+        }
+    }
+}
