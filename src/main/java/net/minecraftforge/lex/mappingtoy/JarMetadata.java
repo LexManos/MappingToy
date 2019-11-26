@@ -61,8 +61,8 @@ public class JarMetadata {
 
     public static void makeMetadata(Path output, Collection<Path> libraries, IMappingFile n2o, String type, boolean obfed) {
         Path target = output.resolve(type + "_meta.json");
-        //if (Files.isRegularFile(target))
-        //    return;
+        if (Files.isRegularFile(target))
+            return;
 
         MappingToy.log.info("  " + target.getFileName());
 
