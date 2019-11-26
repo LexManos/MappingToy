@@ -167,6 +167,10 @@ public class Utils {
         }
     }
 
+    public static void writeJson(Path target, Object obj) throws IOException {
+        Files.write(target, GSON.toJson(obj).getBytes());
+    }
+
     public static Path findMinecraftHome() {
         String userHomeDir = System.getProperty("user.home", ".");
         String osType = System.getProperty("os.name").toLowerCase(Locale.ENGLISH);

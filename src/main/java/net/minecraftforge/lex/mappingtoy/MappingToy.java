@@ -25,6 +25,9 @@ import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -53,6 +56,7 @@ import net.minecraftforge.srgutils.IMappingFile.IField;
 import net.minecraftforge.srgutils.IMappingFile.IMethod;
 import net.minecraftforge.srgutils.MinecraftVersion;
 
+import static net.minecraftforge.lex.mappingtoy.JarMetadata.makeMetadata;
 import static net.minecraftforge.lex.mappingtoy.JarRenamer.makeMappedJar;
 
 public class MappingToy {
@@ -166,7 +170,7 @@ public class MappingToy {
                 writeMappings(root, clientMap, "joined", all);
                 makeJoinedJar(root, ver, clientMap, true);
                 makeMappedJar(root, "joined_o_to_n.tsrg", "joined_a");
-                if (!all) {
+                if (all) {
                     makeJoinedJar(root, ver, clientMap, false);
                     makeMappedJar(root, "joined_o_to_n.tsrg", "joined");
                 }
@@ -183,8 +187,15 @@ public class MappingToy {
                 }
             }
 
+            Collection<Path> libraries = Collections.emptyList();
             if (libs) {
-                downloadLauncherFiles(root, minecraft, ver, manifest);
+                libraries = downloadLauncherFiles(root, minecraft, ver, manifest);
+            }
+
+            if (mergeable) {
+                makeMetadata(root, libraries, clientMap, "joined_a", true);
+                if (all)
+                    makeMetadata(root, libraries, clientMap, "joined_a_n", false);
             }
         }
 
@@ -330,7 +341,7 @@ public class MappingToy {
         System.gc();
     }
 
-    private static void downloadLauncherFiles(Path output, Path minecraft, MinecraftVersion version, VersionJson json) {
+    private static List<Path> downloadLauncherFiles(Path output, Path minecraft, MinecraftVersion version, VersionJson json) {
         String ver = version.toString();
         Path[][] copy = {
             {output.resolve(DownloadType.CLIENT.getFilename()), minecraft.resolve("versions/" + ver + "/" + ver + ".jar" )},
@@ -354,10 +365,12 @@ public class MappingToy {
         }
 
         Path libs = minecraft.resolve("libraries");
+        List<Path> paths = new ArrayList<>();
 
         List<DownloadInfo> downloads = json.getLibraries();
         for (DownloadInfo dl : downloads) {
             Path target = libs.resolve(dl.path);
+            paths.add(target);
             if (Files.isRegularFile(target))
                 continue;
 
@@ -368,5 +381,7 @@ public class MappingToy {
                 log.log(Level.WARNING, "  Could not download library: " + dl.path, e);
             }
         }
+
+        return paths;
     }
 }

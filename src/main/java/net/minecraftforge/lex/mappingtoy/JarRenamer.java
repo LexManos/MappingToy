@@ -87,7 +87,7 @@ public class JarRenamer {
                                     lastSpace = true;
                                 }
                             } else if (line.startsWith("Name:")) {
-                                buf.readLine(); //Kill the SHA1-Diregest line
+                                buf.readLine(); //Kill the SHA1-Digest line
                                 buf.readLine(); //kill the empty line
                             } else {
                                 out.write(line);
