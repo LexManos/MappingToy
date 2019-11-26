@@ -313,7 +313,14 @@ public class JarMetadata {
             this.interfaces = node.interfaces != null && !node.interfaces.isEmpty() ? new ArrayList<>(node.interfaces) : null;
             this.access = node.access == 0 ? null : node.access;
             this.signature = node.signature;
-            this.fields = node.fields == null || node.fields.isEmpty() ? null : node.fields.stream().collect(Collectors.toMap(fld -> fld.name, FieldInfo::new));
+
+            if (node.fields == null || node.fields.isEmpty()) {
+                this.fields = null;
+            } else {
+                this.fields = new TreeMap<>();
+                node.fields.stream().forEach(fld -> this.fields.put(fld.name, new FieldInfo(fld)));
+            }
+
             if (node.methods == null || node.methods.isEmpty()) {
                 this.methods = null;
             } else {
