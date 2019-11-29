@@ -33,7 +33,6 @@ import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.logging.Level;
-import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -153,6 +152,37 @@ public class JarMetadata {
         if (info == null)
             return null;
 
+        if (info.methods != null) {
+            MethodInfo mine = info.methods.get(mtd.name + mtd.desc);
+            if (mine != null && ((mine.getAccess() & (Opcodes.ACC_FINAL | Opcodes.ACC_PRIVATE)) == 0 || owner.equals(mtd.getOwner()))) {
+                if (mine.bouncer == null) {
+                    Set<Method> owners = findOverrides(tree, mine, owner, new HashSet<>());
+                    if (owners.isEmpty())
+                        return new Method(owner, mine.name, mine.desc);
+                    else if (owners.size() == 1)
+                        return owners.iterator().next();
+                    else //We can't find just one owner... something's fucky...
+                        return owners.iterator().next(); //Just pick one...
+                }
+
+                for (MethodInfo m2 : info.methods.values()) {
+                    Method target = m2.bouncer == null ? null : m2.bouncer.target;
+                    if (target != null && mine.name.equals(target.name) && mine.desc.equals(target.desc)) {
+                        if (m2.bouncer.owner != null)
+                            return m2.bouncer.owner;
+
+                        Method ret = walkBouncers(tree, m2, owner);
+                        if (ret != null && !ret.owner.equals(owner)) {
+                            m2.bouncer.setOwner(ret);
+                            return ret;
+                        } else {
+                            MappingToy.log.warning("    Unable to walk: " + m2.name + ' ' + m2.desc + " for " + owner + '/' + mine.name + ' ' + mine.desc);
+                        }
+                    }
+                }
+            }
+        }
+
         if (info.getSuper() != null) {
             Method ret = walkBouncers(tree, mtd, info.getSuper());
             if (ret != null)
@@ -164,32 +194,6 @@ public class JarMetadata {
                 Method ret = walkBouncers(tree, mtd, intf);
                 if (ret != null)
                     return ret;
-            }
-        }
-
-        if (info.methods == null)
-            return null;
-
-        MethodInfo mine = info.methods.get(mtd.name + mtd.desc);
-        if (mine == null || (mine.getAccess() & (Opcodes.ACC_FINAL | Opcodes.ACC_PRIVATE)) != 0)
-            return null;
-
-        if (mine.bouncer == null)
-            return new Method(owner, mtd.name, mtd.desc);
-
-        for (MethodInfo m2 : info.methods.values()) {
-            Method target = m2.bouncer == null ? null : m2.bouncer.target;
-            if (target != null && mine.name.equals(target.name) && mine.desc.equals(target.desc)) {
-                if (m2.bouncer.owner != null)
-                    return m2.bouncer.owner;
-
-                Method ret = walkBouncers(tree, m2, owner);
-                if (ret != null && !ret.owner.equals(owner)) {
-                    m2.bouncer.setOwner(ret);
-                    return ret;
-                } else {
-                    MappingToy.log.warning("    Unable to walk: " + m2.name + ' ' + m2.desc + " for " + owner + '/' + mine.name + ' ' + mine.desc);
-                }
             }
         }
 
@@ -477,6 +481,10 @@ public class JarMetadata {
 
             public Set<Method> getOverrides() {
                 return this.overrides == null ? Collections.emptySet() : this.overrides;
+            }
+
+            public String getOwner() {
+                return ClassInfo.this.name;
             }
 
             @Override
