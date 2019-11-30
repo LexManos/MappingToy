@@ -23,15 +23,19 @@ import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -58,9 +62,9 @@ import net.minecraftforge.srgutils.IMappingFile.IClass;
 public class JarMetadata {
     private static final Handle LAMBDA_METAFACTORY = new Handle(Opcodes.H_INVOKESTATIC, "java/lang/invoke/LambdaMetafactory", "metafactory", "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;", false);
 
-    public static void makeMetadata(Path output, Collection<Path> libraries, IMappingFile n2o, String type, boolean obfed) {
+    public static void makeMetadata(Path output, Collection<Path> libraries, IMappingFile n2o, String type, boolean obfed, boolean force) {
         Path target = output.resolve(type + "_meta.json");
-        if (Files.isRegularFile(target))
+        if (!force && Files.isRegularFile(target))
             return;
 
         MappingToy.log.info("  " + target.getFileName());
@@ -141,6 +145,10 @@ public class JarMetadata {
             for (MethodInfo mtd : info.methods.values()) {
                 mtd.setOverrides(findOverrides(tree, mtd, info.name, new TreeSet<>()));
             }
+        }
+
+        if (!info.isAbstract()) {
+            resolveAbstract(tree, info);
         }
 
         info.resolved = true;
@@ -239,6 +247,95 @@ public class JarMetadata {
         return overrides;
     }
 
+    private static void resolveAbstract(Tree tree, ClassInfo cls) {
+        Map<String, String> abs = new HashMap<>();
+        Set<String> known = new TreeSet<>();
+        Queue<String> que = new LinkedList<>();
+        Consumer<String> add = c -> {
+            if (!known.contains(c)) {
+                que.add(c);
+                known.add(c);
+            }
+        };
+
+        add.accept(cls.name);
+
+        while (!que.isEmpty()) {
+            ClassInfo info = tree.getInfo(que.poll());
+            if (info == null)
+                continue;
+
+            if (info.methods != null)
+                info.methods.values().stream()
+                .filter(MethodInfo::isAbstract)
+                .filter(mtd -> mtd.overrides == null) //We only want the roots
+                .forEach(mtd -> abs.put(mtd.name + mtd.desc, info.name));
+
+            if (info.getSuper() != null)
+                add.accept(info.getSuper());
+
+            if (info.interfaces != null)
+                info.interfaces.forEach(add);
+        }
+
+        known.clear();
+        add.accept(cls.name);
+
+        while (!que.isEmpty()) {
+            ClassInfo info = tree.getInfo(que.poll());
+            if (info == null)
+                continue;
+
+            if (info.methods != null) {
+                for (MethodInfo mtd : info.methods.values()) {
+                    if (mtd.isAbstract())
+                        continue;
+
+                    String towner = abs.remove(mtd.name + mtd.desc);
+                    if (towner == null)
+                        continue;
+                    Method target = new Method(towner, mtd.name, mtd.desc);
+
+                    if (mtd.overrides != null) {
+                        for (Method omh : mtd.overrides) {
+                            ClassInfo ocls = tree.getInfo(omh.owner);
+                            if (towner.equals(omh.owner) || ocls == null) //Error?
+                                continue;
+                            MethodInfo omtd = ocls.methods == null ? null : ocls.methods.get(omh.name + omh.desc);
+                            if (omtd == null) //Error?
+                                continue;
+                            if (omtd.overrides != null) {
+                                if (!omtd.overrides.contains(target))
+                                    omtd.overrides.add(target);
+                            } else {
+                                omtd.setOverrides(new HashSet<>(Arrays.asList(target)));
+                            }
+                            break;
+                        }
+                    } else {
+                        if (mtd.overrides != null) {
+                            if (!mtd.overrides.contains(target))
+                                mtd.overrides.add(target);
+                        } else {
+                            mtd.setOverrides(new HashSet<>(Arrays.asList(target)));
+                        }
+                    }
+                }
+            }
+
+            if (info.getSuper() != null)
+                add.accept(info.getSuper());
+
+            if (info.interfaces != null)
+                info.interfaces.forEach(add);
+        }
+
+        if (!abs.isEmpty()) {
+            MappingToy.log.log(Level.SEVERE, "    Unresolved abstracts for: " + cls.name);
+            abs.forEach((mtd,c) -> MappingToy.log.log(Level.SEVERE, "      " + c + "/" + mtd));
+        }
+    }
+
     private static class Tree {
         private Map<String, ClassInfo> classes = new HashMap<>();
         private Set<String> negative = new HashSet<>();
@@ -300,8 +397,56 @@ public class JarMetadata {
         }
     }
 
+    private static interface IAccessible {
+        int getAccess();
+
+        default boolean isInterface() {
+            return ((getAccess() & Opcodes.ACC_INTERFACE) != 0);
+        }
+
+        default boolean isAbstract() {
+            return ((getAccess() & Opcodes.ACC_ABSTRACT) != 0);
+        }
+
+        default boolean isSynthetic() {
+            return ((getAccess() & Opcodes.ACC_SYNTHETIC) != 0);
+        }
+
+        default boolean isAnnotation() {
+            return ((getAccess() & Opcodes.ACC_ANNOTATION) != 0);
+        }
+
+        default boolean isEnum() {
+            return ((getAccess() & Opcodes.ACC_ENUM) != 0);
+        }
+
+        default boolean isPackagePrivate() {
+            return (getAccess() & (Opcodes.ACC_PUBLIC | Opcodes.ACC_PRIVATE | Opcodes.ACC_PROTECTED)) == 0;
+        }
+
+        default boolean isPublic() {
+            return (getAccess() & Opcodes.ACC_PUBLIC) != 0;
+        }
+
+        default boolean isPrivate() {
+            return (getAccess() & Opcodes.ACC_PRIVATE) != 0;
+        }
+
+        default boolean isProtected() {
+            return (getAccess() & Opcodes.ACC_PROTECTED) != 0;
+        }
+
+        default boolean isStatic() {
+            return (getAccess() & Opcodes.ACC_STATIC) != 0;
+        }
+
+        default boolean isFinal() {
+            return (getAccess() & Opcodes.ACC_FINAL) != 0;
+        }
+    }
+
     @SuppressWarnings("unused")
-    public static class ClassInfo {
+    public static class ClassInfo implements IAccessible {
         private final transient String name;
         private final String superName;
         private final List<String> interfaces;
@@ -354,10 +499,7 @@ public class JarMetadata {
             return this.superName == null && !"java/lang/Object".equals(this.name) ? "java/lang/Object" : this.superName;
         }
 
-        public boolean isEnum() {
-            return access != null && ((access & Opcodes.ACC_ENUM) != 0);
-        }
-
+        @Override
         public int getAccess() {
             return access == null ? 0 : access;
         }
@@ -367,7 +509,7 @@ public class JarMetadata {
             return Utils.getAccess(getAccess()) + ' ' + this.name;
         }
 
-        public class FieldInfo {
+        public class FieldInfo implements IAccessible {
             private final transient String name;
             private final transient String desc;
             private final Integer access;
@@ -385,6 +527,7 @@ public class JarMetadata {
                 this.force = name;
             }
 
+            @Override
             public int getAccess() {
                 return access == null ? 0 : access;
             }
@@ -395,7 +538,7 @@ public class JarMetadata {
             }
         }
 
-        public class MethodInfo {
+        public class MethodInfo implements IAccessible {
             private final transient String name;
             private final transient String desc;
             private final Integer access;
@@ -459,16 +602,9 @@ public class JarMetadata {
                 this.bouncer = bounce;
             }
 
+            @Override
             public int getAccess() {
                 return access == null ? 0 : access;
-            }
-
-            public boolean isStatic() {
-                return (getAccess() & Opcodes.ACC_STATIC) != 0;
-            }
-
-            public boolean isPrivate() {
-                return (getAccess() & Opcodes.ACC_PRIVATE) != 0;
             }
 
             public void forceName(String value) {

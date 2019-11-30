@@ -70,6 +70,7 @@ public class MappingToy {
         OptionSpec<Void>    allO       = parser.accepts("all");
         OptionSpec<Void>    libsO      = parser.accepts("libs");
         OptionSpec<Path>    logO       = parser.accepts("log").withRequiredArg().withValuesConvertedBy(new PathConverter());
+        OptionSpec<Void>    forceO     = parser.accepts("force", "Force rebuilding of everything even if files already exist, Mainly for debugging");
 
         OptionSet options = parser.parse(args);
         Set<MinecraftVersion> versions = options.valuesOf(versionO).stream().map(MinecraftVersion::from).collect(Collectors.toCollection(TreeSet::new));
@@ -77,6 +78,7 @@ public class MappingToy {
         Path         minecraft    = options.valueOf(minecraftO);
         boolean      all          = options.has(allO);
         boolean      libs         = all || options.has(libsO);
+        boolean      force        = options.has(forceO);
 
         if (!Files.isDirectory(minecraft)) {
             System.out.println("Specificed --mc directory does not exist: " + minecraft);
@@ -133,6 +135,7 @@ public class MappingToy {
         log.info("All:       " + all);
         log.info("Libs:      " + libs);
         log.info("Versions:  " + (versions.isEmpty() ? "All" : versions));
+        log.info("Force:     " + force);
         log.info("");
 
         Files.createDirectories(output);
@@ -167,23 +170,23 @@ public class MappingToy {
             boolean mergeable = canMerge(clientMap, serverMap);
 
             if (mergeable) {
-                writeMappings(root, clientMap, "joined", all);
-                makeJoinedJar(root, ver, clientMap, true);
-                makeMappedJar(root, "joined_o_to_n.tsrg", "joined_a");
+                writeMappings(root, clientMap, "joined", all, force);
+                makeJoinedJar(root, ver, clientMap, true, force);
+                makeMappedJar(root, "joined_o_to_n.tsrg", "joined_a", force);
                 if (all) {
-                    makeJoinedJar(root, ver, clientMap, false);
-                    makeMappedJar(root, "joined_o_to_n.tsrg", "joined");
+                    makeJoinedJar(root, ver, clientMap, false, force);
+                    makeMappedJar(root, "joined_o_to_n.tsrg", "joined", force);
                 }
             }
 
             if (!mergeable || all){
                 if (clientMap != null) {
-                    writeMappings(root, clientMap, "client", all);
-                    makeMappedJar(root, "client_o_to_n.tsrg", "client");
+                    writeMappings(root, clientMap, "client", all, force);
+                    makeMappedJar(root, "client_o_to_n.tsrg", "client", force);
                 }
                 if (serverMap != null) {
-                    writeMappings(root, serverMap, "server", all);
-                    makeMappedJar(root, "server_o_to_n.tsrg", "server");
+                    writeMappings(root, serverMap, "server", all, force);
+                    makeMappedJar(root, "server_o_to_n.tsrg", "server", force);
                 }
             }
 
@@ -193,9 +196,9 @@ public class MappingToy {
             }
 
             if (mergeable) {
-                makeMetadata(root, libraries, clientMap, "joined_a", true);
+                makeMetadata(root, libraries, clientMap, "joined_a", true, force);
                 if (all)
-                    makeMetadata(root, libraries, clientMap, "joined_a_n", false);
+                    makeMetadata(root, libraries, clientMap, "joined_a_n", false, force);
             }
         }
 
@@ -286,12 +289,12 @@ public class MappingToy {
         return true;
     }
 
-    private static void writeMappings(Path output, IMappingFile mapping, String prefix, boolean all) {
+    private static void writeMappings(Path output, IMappingFile mapping, String prefix, boolean all, boolean force) {
         for (IMappingFile.Format format : all ? IMappingFile.Format.values() : new IMappingFile.Format[]{ IMappingFile.Format.TSRG }) {
             String ext = format.name().toLowerCase(Locale.ENGLISH);
 
             Path target = output.resolve(prefix + "_n_to_o." + ext);
-            if (!Files.isRegularFile(target)) {
+            if (force || !Files.isRegularFile(target)) {
                 log.info("  " + target.getFileName());
                 try {
                     mapping.write(target, format, false);
@@ -301,7 +304,7 @@ public class MappingToy {
             }
 
             target = output.resolve(prefix + "_o_to_n." + ext);
-            if (!Files.isRegularFile(target)) {
+            if (force || !Files.isRegularFile(target)) {
                 log.info("  " + target.getFileName());
                 try {
                     mapping.write(target, format, true);
@@ -312,9 +315,9 @@ public class MappingToy {
         }
     }
 
-    private static void makeJoinedJar(Path output, MinecraftVersion version, IMappingFile mappings, boolean annotate) {
+    private static void makeJoinedJar(Path output, MinecraftVersion version, IMappingFile mappings, boolean annotate, boolean force) {
         Path target = output.resolve(annotate ? "joined_a.jar" : "joined.jar");
-        if (Files.isRegularFile(target))
+        if (!force && Files.isRegularFile(target))
             return;
 
         log.info("  " + target.getFileName());

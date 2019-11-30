@@ -43,12 +43,12 @@ import net.minecraftforge.srgutils.IMappingFile;
 import net.minecraftforge.srgutils.IMappingFile.IClass;
 
 public class JarRenamer {
-    public static void makeMappedJar(Path root, String mapping, String prefix) {
+    public static void makeMappedJar(Path root, String mapping, String prefix, boolean force) {
         Path source = root.resolve(prefix + ".jar");
         Path target = root.resolve(prefix + "_n.jar");
         Path srg    = root.resolve(mapping);
 
-        if (Files.isRegularFile(target))
+        if (!force && Files.isRegularFile(target))
             return;
 
         if (!Files.isRegularFile(source) || !Files.isRegularFile(srg))
