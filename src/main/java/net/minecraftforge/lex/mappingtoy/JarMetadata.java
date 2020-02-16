@@ -397,7 +397,7 @@ public class JarMetadata {
         }
     }
 
-    private static interface IAccessible {
+    public static interface IAccessible {
         int getAccess();
 
         default boolean isInterface() {
@@ -499,6 +499,30 @@ public class JarMetadata {
             return this.superName == null && !"java/lang/Object".equals(this.name) ? "java/lang/Object" : this.superName;
         }
 
+        public String getName() {
+            return name;
+        }
+
+        public List<String> getInterfaces() {
+            return this.interfaces == null ? Collections.emptyList() : this.interfaces;
+        }
+
+        public String getSignature() {
+            return this.signature == null ? "" : this.signature;
+        }
+
+        public Map<String, FieldInfo> getFields() {
+            return this.fields == null ? Collections.emptyMap() : this.fields;
+        }
+
+        public Map<String, MethodInfo> getMethods() {
+            return methods == null ? Collections.emptyMap() : this.methods;
+        }
+
+        public boolean isResolved() {
+            return resolved;
+        }
+
         @Override
         public int getAccess() {
             return access == null ? 0 : access;
@@ -535,6 +559,14 @@ public class JarMetadata {
             @Override
             public String toString() {
                 return Utils.getAccess(getAccess()) + ' ' + this.desc + ' ' + this.name;
+            }
+
+            public String getSignature() {
+                return this.signature == null ? "" : this.signature;
+            }
+
+            public String getForce() {
+                return this.force == null ? "" : this.force;
             }
         }
 
@@ -619,6 +651,14 @@ public class JarMetadata {
                 return this.overrides == null ? Collections.emptySet() : this.overrides;
             }
 
+            public String getSignature() {
+                return this.signature == null ? "" : this.signature;
+            }
+
+            public String getForce() {
+                return this.force == null ? "" : this.force;
+            }
+
             public String getOwner() {
                 return ClassInfo.this.name;
             }
@@ -627,6 +667,8 @@ public class JarMetadata {
             public String toString() {
                 return Utils.getAccess(getAccess()) + ' ' + this.name + ' ' + this.desc;
             }
+
+
         }
     }
 
