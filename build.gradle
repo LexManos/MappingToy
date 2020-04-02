@@ -23,7 +23,7 @@ dependencies {
     compile 'net.sf.jopt-simple:jopt-simple:6.0-alpha-3'
     compile 'com.google.code.gson:gson:2.8.6'
     compile 'net.minecraftforge:mergetool:1.0.10'
-    compile 'net.minecraftforge:srgutils:0.2.7'
+    compile 'net.minecraftforge:srgutils:0.2.10'
 }
 
 ext {
