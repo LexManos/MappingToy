@@ -106,7 +106,9 @@ public class MappingToy {
                                 record.getThrown().printStackTrace(pw);
                             }
                             sb.append(sw.toString());
-                        } catch (Exception ex) {}
+                        } catch (Exception ex) {
+                            ex.printStackTrace();
+                        }
                     }
                     return sb.toString();
                 }
@@ -117,6 +119,8 @@ public class MappingToy {
             @Override
             public void publish(LogRecord record) {
                 System.out.println(String.format(record.getMessage(), record.getParameters()));
+                if (record.getThrown() != null)
+                    record.getThrown().printStackTrace();
             }
             @Override public void flush() {}
             @Override public void close() throws SecurityException {}

@@ -24,6 +24,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.io.Writer;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
@@ -35,6 +38,12 @@ import java.util.Locale;
 import java.util.TimeZone;
 import java.util.logging.Level;
 import java.util.zip.ZipEntry;
+
+import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.tree.InsnList;
+import org.objectweb.asm.util.Printer;
+import org.objectweb.asm.util.Textifier;
+import org.objectweb.asm.util.TraceMethodVisitor;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -203,5 +212,13 @@ public class Utils {
         if (out.length() > 0)
             return out.toString().trim();
         return "default";
+    }
+
+    public static String toString(InsnList lst) {
+        Printer printer = new Textifier();
+        lst.accept(new TraceMethodVisitor(printer));
+        Writer writer = new StringWriter();
+        printer.print(new PrintWriter(writer));
+        return writer.toString();
     }
 }

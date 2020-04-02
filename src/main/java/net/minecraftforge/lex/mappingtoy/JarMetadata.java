@@ -60,7 +60,9 @@ import net.minecraftforge.srgutils.IMappingFile;
 import net.minecraftforge.srgutils.IMappingFile.IClass;
 
 public class JarMetadata {
-    private static final Handle LAMBDA_METAFACTORY = new Handle(Opcodes.H_INVOKESTATIC, "java/lang/invoke/LambdaMetafactory", "metafactory", "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;", false);
+    private static boolean DEBUG = Boolean.parseBoolean(System.getProperty("toy.debugLambdas", "false"));
+    private static final Handle LAMBDA_METAFACTORY = new Handle(Opcodes.H_INVOKESTATIC, "java/lang/invoke/LambdaMetafactory", "metafactory",       "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;", false);
+    private static final Handle LAMBDA_ALTMETAFACTORY = new Handle(Opcodes.H_INVOKESTATIC, "java/lang/invoke/LambdaMetafactory", "altMetafactory", "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;[Ljava/lang/Object;)Ljava/lang/invoke/CallSite;", false);
 
     public static void makeMetadata(Path output, Collection<Path> libraries, IMappingFile n2o, String type, boolean obfed, boolean force) {
         Path target = output.resolve(type + "_meta.json");
@@ -475,12 +477,11 @@ public class JarMetadata {
             } else {
                 //Gather Lambda methods so we can skip them in bouncers?
                 Set<String> lambdas = new HashSet<>();
-                for (MethodNode m : node.methods) {
-                    for (AbstractInsnNode asn : (Iterable<AbstractInsnNode>)() -> m.instructions.iterator()) {
+                for (MethodNode mtd : node.methods) {
+                    for (AbstractInsnNode asn : (Iterable<AbstractInsnNode>)() -> mtd.instructions.iterator()) {
                         if (asn instanceof InvokeDynamicInsnNode) {
-                            InvokeDynamicInsnNode idn = (InvokeDynamicInsnNode)asn;
-                            if (LAMBDA_METAFACTORY.equals(idn.bsm) && idn.bsmArgs != null && idn.bsmArgs.length == 3 && idn.bsmArgs[1] instanceof Handle) {
-                                Handle target = ((Handle)idn.bsmArgs[1]);
+                            Handle target = getLambdaTarget((InvokeDynamicInsnNode)asn);
+                            if (target != null) {
                                 lambdas.add(target.getOwner() + '/' + target.getName() + target.getDesc());
                             }
                         }
@@ -488,11 +489,23 @@ public class JarMetadata {
                 }
 
                 this.methods = new TreeMap<>();
-                node.methods.forEach(mtd -> {
+                for (MethodNode mtd : node.methods) {
                     String key = mtd.name + mtd.desc;
                     this.methods.put(key, new MethodInfo(mtd, lambdas.contains(this.name + '/' + key)));
-                });
+                    if (DEBUG && mtd.name.startsWith("lambda$") && !lambdas.contains(this.name + '/' + key)) {
+                        MappingToy.log.log(Level.INFO, "Bad lambda: " + node.name + '/' + mtd.name + ' ' + mtd.desc);
+                        MappingToy.log.log(Level.INFO, Utils.toString(mtd.instructions));
+                    }
+                }
             }
+        }
+
+        private Handle getLambdaTarget(InvokeDynamicInsnNode idn) {
+            if (LAMBDA_METAFACTORY.equals(idn.bsm)    && idn.bsmArgs != null && idn.bsmArgs.length == 3 && idn.bsmArgs[1] instanceof Handle)
+                return ((Handle)idn.bsmArgs[1]);
+            if (LAMBDA_ALTMETAFACTORY.equals(idn.bsm) && idn.bsmArgs != null && idn.bsmArgs.length == 5 && idn.bsmArgs[1] instanceof Handle)
+                return ((Handle)idn.bsmArgs[1]);
+            return null;
         }
 
         public String getSuper() {
@@ -541,6 +554,7 @@ public class JarMetadata {
         public class MethodInfo implements IAccessible {
             private final transient String name;
             private final transient String desc;
+            private final transient boolean isLambda;
             private final Integer access;
             private final String signature;
             private final Bounce bouncer;
@@ -552,6 +566,7 @@ public class JarMetadata {
                 this.desc = node.desc;
                 this.access = node.access == 0 ? null : node.access;
                 this.signature = node.signature;
+                this.isLambda = lambda;
 
                 Bounce bounce = null;
                 if (!lambda && (node.access & (Opcodes.ACC_SYNTHETIC | Opcodes.ACC_BRIDGE)) != 0 && (node.access & Opcodes.ACC_STATIC) == 0) {

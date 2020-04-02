@@ -16,14 +16,14 @@ repositories {
 }
 
 dependencies {
-    compile 'org.ow2.asm:asm:7.2'
-    compile 'org.ow2.asm:asm-commons:7.2'
-    compile 'org.ow2.asm:asm-tree:7.2'
-    compile 'org.ow2.asm:asm-util:7.2'
+    compile 'org.ow2.asm:asm:8.0'
+    compile 'org.ow2.asm:asm-commons:8.0'
+    compile 'org.ow2.asm:asm-tree:8.0'
+    compile 'org.ow2.asm:asm-util:8.0'
     compile 'net.sf.jopt-simple:jopt-simple:6.0-alpha-3'
     compile 'com.google.code.gson:gson:2.8.6'
-    compile 'net.minecraftforge:mergetool:1.0.10'
-    compile 'net.minecraftforge:srgutils:0.2.7'
+    compile 'net.minecraftforge:mergetool:1.1.0'
+    compile 'net.minecraftforge:srgutils:0.2.10'
 }
 
 ext {
