@@ -39,7 +39,6 @@ import java.util.TimeZone;
 import java.util.logging.Level;
 import java.util.zip.ZipEntry;
 
-import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.util.Printer;
 import org.objectweb.asm.util.Textifier;

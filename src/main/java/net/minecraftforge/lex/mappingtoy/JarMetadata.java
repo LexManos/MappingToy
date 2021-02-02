@@ -74,10 +74,10 @@ public class JarMetadata {
         IMappingFile o2n = n2o.reverse();
         Tree tree = new Tree();
 
-        Set<String> classes = tree.load(output.resolve(type + ".jar"));
+        Set<String> classes = tree.load(output.resolve(type + ".jar"), false);
 
         for (Path lib : libraries)
-            tree.load(lib);
+            tree.load(lib, true);
 
         for (String cls : classes)
             resolve(tree, cls, obfed, o2n, n2o);
@@ -146,6 +146,7 @@ public class JarMetadata {
             //Resolve the 'root' owner of each method.
             for (MethodInfo mtd : info.methods.values()) {
                 mtd.setOverrides(findOverrides(tree, mtd, info.name, new TreeSet<>()));
+                mtd.setParent(findFirstParent(tree, mtd, info.name));
             }
         }
 
@@ -249,6 +250,47 @@ public class JarMetadata {
         return overrides;
     }
 
+    private static Method findFirstParent(Tree tree, MethodInfo mtd, String owner) {
+        if (mtd.isStatic() || mtd.isPrivate() || mtd.name.startsWith("<"))
+            return null;
+
+        ClassInfo info = tree.getInfo(owner);
+
+        if (info == null)
+            return null;
+
+        if (info.methods != null) {
+            MethodInfo mine = info.methods.get(mtd.name + mtd.desc);
+            if (info.isLocal() && mine != null && mine != mtd && (mine.getAccess() & (Opcodes.ACC_FINAL | Opcodes.ACC_PRIVATE)) == 0)
+                return new Method(info.name, mine.name, mine.desc);
+
+            for (MethodInfo m : info.methods.values()) {
+                Method target = m.bouncer == null ? null : m.bouncer.target;
+                if (target != null && mtd.name.equals(target.name) && mtd.desc.equals(target.desc)) {
+                    Method ret = findFirstParent(tree, m, info.name);
+                    if (ret != null)
+                        return ret;
+                }
+            }
+        }
+
+        if (info.getSuper() != null) {
+            Method ret = findFirstParent(tree, mtd, info.getSuper());
+            if (ret != null)
+                return ret;
+        }
+
+        if (info.interfaces != null) {
+            for (String intf : info.interfaces) {
+                Method ret = findFirstParent(tree, mtd, intf);
+                if (ret != null)
+                    return ret;
+            }
+        }
+
+        return null;
+    }
+
     private static void resolveAbstract(Tree tree, ClassInfo cls) {
         Map<String, String> abs = new HashMap<>();
         Set<String> known = new TreeSet<>();
@@ -342,8 +384,9 @@ public class JarMetadata {
         private Map<String, ClassInfo> classes = new HashMap<>();
         private Set<String> negative = new HashSet<>();
         private Map<String, byte[]> sources = new HashMap<>();
+        private Set<String> local = new HashSet<>();
 
-        public Set<String> load(Path path) {
+        public Set<String> load(Path path, boolean library) {
             try (ZipInputStream jin = new ZipInputStream(Files.newInputStream(path))) {
                 Set<String> classes = new TreeSet<>();
 
@@ -358,6 +401,8 @@ public class JarMetadata {
                         byte[] data = Utils.readStreamFully(jin);
                         sources.put(cls, data);
                         classes.add(cls);
+                        if (!library)
+                            local.add(cls);
                     }
                 }
 
@@ -392,7 +437,7 @@ public class JarMetadata {
                 ClassNode classNode = new ClassNode();
                 ClassReader classReader = new ClassReader(data);
                 classReader.accept(classNode, 0);
-                ret = new ClassInfo(classNode);
+                ret = new ClassInfo(classNode, local.contains(cls));
                 classes.put(cls, ret);
             }
             return ret;
@@ -450,6 +495,7 @@ public class JarMetadata {
     @SuppressWarnings("unused")
     public static class ClassInfo implements IAccessible {
         private final transient String name;
+        private final transient boolean local;
         private final String superName;
         private final List<String> interfaces;
         private final Integer access;
@@ -458,7 +504,8 @@ public class JarMetadata {
         private final Map<String, MethodInfo> methods;
         private transient boolean resolved = false;
 
-        private ClassInfo(ClassNode node) {
+        private ClassInfo(ClassNode node, boolean local) {
+            this.local = local;
             this.name = node.name;
             this.superName = "java/lang/Object".equals(node.superName) ? null : node.superName;
             this.interfaces = node.interfaces != null && !node.interfaces.isEmpty() ? new ArrayList<>(node.interfaces) : null;
@@ -506,6 +553,10 @@ public class JarMetadata {
             if (LAMBDA_ALTMETAFACTORY.equals(idn.bsm) && idn.bsmArgs != null && idn.bsmArgs.length == 5 && idn.bsmArgs[1] instanceof Handle)
                 return ((Handle)idn.bsmArgs[1]);
             return null;
+        }
+
+        public boolean isLocal() {
+            return this.local;
         }
 
         public String getSuper() {
@@ -560,6 +611,7 @@ public class JarMetadata {
             private final Bounce bouncer;
             private String force;
             private Set<Method> overrides;
+            private Method parent;
 
             private MethodInfo(MethodNode node, boolean lambda) {
                 this.name = node.name;
@@ -632,6 +684,14 @@ public class JarMetadata {
 
             public Set<Method> getOverrides() {
                 return this.overrides == null ? Collections.emptySet() : this.overrides;
+            }
+
+            public Method getParent() {
+                return this.parent;
+            }
+
+            public void setParent(Method value) {
+                this.parent = value;
             }
 
             public String getOwner() {
