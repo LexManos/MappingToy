@@ -123,10 +123,10 @@ public class JarMetadata {
 
             if (info.methods != null) {
                 for (MethodInfo mtd : info.methods.values()) {
-                    String official = obfed ? mcls == null ? null : mcls.remapMethod(mtd.name, mtd.desc) : mtd.name;
-                    if ("values".equals(official) && mtd.desc.equals("()[L" + info.name + ';'))
+                    String official = obfed ? mcls == null ? null : mcls.remapMethod(mtd.getName(), mtd.getDesc()) : mtd.getName();
+                    if ("values".equals(official) && mtd.getDesc().equals("()[L" + info.name + ';'))
                         mtd.forceName("values");
-                    else if ("valueOf".equals(official) && mtd.desc.equals("(Ljava/lang/String;)L" + info.name + ';'))
+                    else if ("valueOf".equals(official) && mtd.getDesc().equals("(Ljava/lang/String;)L" + info.name + ';'))
                         mtd.forceName("valueOf");
                 }
             }
@@ -164,12 +164,12 @@ public class JarMetadata {
             return null;
 
         if (info.methods != null) {
-            MethodInfo mine = info.methods.get(mtd.name + mtd.desc);
+            MethodInfo mine = info.methods.get(mtd.getName() + mtd.getDesc());
             if (mine != null && ((mine.getAccess() & (Opcodes.ACC_FINAL | Opcodes.ACC_PRIVATE)) == 0 || owner.equals(mtd.getOwner()))) {
                 if (mine.bouncer == null) {
                     Set<Method> owners = findOverrides(tree, mine, owner, new HashSet<>());
                     if (owners.isEmpty())
-                        return new Method(owner, mine.name, mine.desc);
+                        return new Method(owner, mine.getName(), mine.getDesc());
                     else if (owners.size() == 1)
                         return owners.iterator().next();
                     else //We can't find just one owner... something's fucky...
@@ -178,7 +178,7 @@ public class JarMetadata {
 
                 for (MethodInfo m2 : info.methods.values()) {
                     Method target = m2.bouncer == null ? null : m2.bouncer.target;
-                    if (target != null && mine.name.equals(target.name) && mine.desc.equals(target.desc)) {
+                    if (target != null && mine.getName().equals(target.name) && mine.getDesc().equals(target.desc)) {
                         if (m2.bouncer.owner != null)
                             return m2.bouncer.owner;
 
@@ -187,7 +187,7 @@ public class JarMetadata {
                             m2.bouncer.setOwner(ret);
                             return ret;
                         } else {
-                            MappingToy.log.warning("    Unable to walk: " + m2.name + ' ' + m2.desc + " for " + owner + '/' + mine.name + ' ' + mine.desc);
+                            MappingToy.log.warning("    Unable to walk: " + m2.getName() + ' ' + m2.getDesc() + " for " + owner + '/' + mine.getName() + ' ' + mine.getDesc());
                         }
                     }
                 }
@@ -212,7 +212,7 @@ public class JarMetadata {
     }
 
     private static Set<Method> findOverrides(Tree tree, MethodInfo mtd, String owner, Set<Method> overrides) {
-        if (mtd.isStatic() || mtd.isPrivate() || mtd.name.startsWith("<"))
+        if (mtd.isStatic() || mtd.isPrivate() || mtd.getName().startsWith("<"))
             return overrides;
 
         ClassInfo info = tree.getInfo(owner);
@@ -223,16 +223,16 @@ public class JarMetadata {
         if (info.methods != null) {
             for (MethodInfo m : info.methods.values()) {
                 Method target = m.bouncer == null ? null : m.bouncer.target;
-                if (target != null && mtd.name.equals(target.name) && mtd.desc.equals(target.desc)) {
+                if (target != null && mtd.getName().equals(target.name) && mtd.getDesc().equals(target.desc)) {
                     //overrides.add(new Method(info.name, m.name, m.desc)); //Don't add overrides for self-methods
                     findOverrides(tree, m, info.name, overrides);
                 }
             }
 
-            MethodInfo mine = info.methods.get(mtd.name + mtd.desc);
+            MethodInfo mine = info.methods.get(mtd.getName() + mtd.getDesc());
             if (mine != null && mine != mtd && (mine.getAccess() & (Opcodes.ACC_FINAL | Opcodes.ACC_PRIVATE)) == 0) {
                 if (mine.getOverrides().isEmpty()) {
-                    overrides.add(new Method(info.name, mine.name, mine.desc));
+                    overrides.add(new Method(info.name, mine.getName(), mine.getDesc()));
                 } else {
                     overrides.addAll(mine.getOverrides());
                 }
@@ -251,7 +251,7 @@ public class JarMetadata {
     }
 
     private static Method findFirstParent(Tree tree, MethodInfo mtd, String owner) {
-        if (mtd.isStatic() || mtd.isPrivate() || mtd.name.startsWith("<"))
+        if (mtd.isStatic() || mtd.isPrivate() || mtd.getName().startsWith("<"))
             return null;
 
         ClassInfo info = tree.getInfo(owner);
@@ -260,13 +260,13 @@ public class JarMetadata {
             return null;
 
         if (info.methods != null) {
-            MethodInfo mine = info.methods.get(mtd.name + mtd.desc);
+            MethodInfo mine = info.methods.get(mtd.getName() + mtd.getDesc());
             if (info.isLocal() && mine != null && mine != mtd && (mine.getAccess() & (Opcodes.ACC_FINAL | Opcodes.ACC_PRIVATE)) == 0)
-                return new Method(info.name, mine.name, mine.desc);
+                return new Method(info.name, mine.getName(), mine.getDesc());
 
             for (MethodInfo m : info.methods.values()) {
                 Method target = m.bouncer == null ? null : m.bouncer.target;
-                if (target != null && mtd.name.equals(target.name) && mtd.desc.equals(target.desc)) {
+                if (target != null && mtd.getName().equals(target.name) && mtd.getDesc().equals(target.desc)) {
                     Method ret = findFirstParent(tree, m, info.name);
                     if (ret != null)
                         return ret;
@@ -313,7 +313,7 @@ public class JarMetadata {
                 info.methods.values().stream()
                 .filter(MethodInfo::isAbstract)
                 .filter(mtd -> mtd.overrides == null) //We only want the roots
-                .forEach(mtd -> abs.put(mtd.name + mtd.desc, info.name));
+                .forEach(mtd -> abs.put(mtd.getName() + mtd.getDesc(), info.name));
 
             if (info.getSuper() != null)
                 add.accept(info.getSuper());
@@ -335,12 +335,13 @@ public class JarMetadata {
                     if (mtd.isAbstract())
                         continue;
 
-                    String towner = abs.remove(mtd.name + mtd.desc);
+                    String towner = abs.remove(mtd.getName() + mtd.getDesc());
                     if (towner == null)
                         continue;
-                    Method target = new Method(towner, mtd.name, mtd.desc);
+                    Method target = new Method(towner, mtd.getName(), mtd.getDesc());
 
                     if (mtd.overrides != null) {
+                        /* What was this doing in the first place?
                         for (Method omh : mtd.overrides) {
                             ClassInfo ocls = tree.getInfo(omh.owner);
                             if (towner.equals(omh.owner) || ocls == null) //Error?
@@ -348,21 +349,16 @@ public class JarMetadata {
                             MethodInfo omtd = ocls.methods == null ? null : ocls.methods.get(omh.name + omh.desc);
                             if (omtd == null) //Error?
                                 continue;
-                            if (omtd.overrides != null) {
-                                if (!omtd.overrides.contains(target))
-                                    omtd.overrides.add(target);
-                            } else {
+                            if (omtd.overrides != null)
+                                omtd.overrides.add(target);
+                            else
                                 omtd.setOverrides(new HashSet<>(Arrays.asList(target)));
-                            }
                             break;
                         }
+                        */
+                        mtd.overrides.add(target);
                     } else {
-                        if (mtd.overrides != null) {
-                            if (!mtd.overrides.contains(target))
-                                mtd.overrides.add(target);
-                        } else {
-                            mtd.setOverrides(new HashSet<>(Arrays.asList(target)));
-                        }
+                        mtd.setOverrides(new HashSet<>(Arrays.asList(target)));
                     }
                 }
             }
@@ -603,9 +599,8 @@ public class JarMetadata {
         }
 
         public class MethodInfo implements IAccessible {
-            private final transient String name;
-            private final transient String desc;
             private final transient boolean isLambda;
+            private final transient Method method;
             private final Integer access;
             private final String signature;
             private final Bounce bouncer;
@@ -614,8 +609,7 @@ public class JarMetadata {
             private Method parent;
 
             private MethodInfo(MethodNode node, boolean lambda) {
-                this.name = node.name;
-                this.desc = node.desc;
+                this.method = new Method(ClassInfo.this.name, node.name, node.desc);
                 this.access = node.access == 0 ? null : node.access;
                 this.signature = node.signature;
                 this.isLambda = lambda;
@@ -698,9 +692,21 @@ public class JarMetadata {
                 return ClassInfo.this.name;
             }
 
+            public Method getMethod() {
+                return this.method;
+            }
+
+            public String getName() {
+                return this.method.getName();
+            }
+
+            public String getDesc() {
+                return this.method.getDesc();
+            }
+
             @Override
             public String toString() {
-                return Utils.getAccess(getAccess()) + ' ' + this.name + ' ' + this.desc;
+                return Utils.getAccess(getAccess()) + ' ' + this.method.toString();
             }
         }
     }
@@ -714,6 +720,14 @@ public class JarMetadata {
             this.owner = owner;
             this.name = name;
             this.desc = desc;
+        }
+
+        public String getName() {
+            return this.name;
+        }
+
+        public String getDesc() {
+            return this.desc;
         }
 
         @Override

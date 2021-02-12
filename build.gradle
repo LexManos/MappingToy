@@ -16,14 +16,14 @@ repositories {
 }
 
 dependencies {
-    compile 'org.ow2.asm:asm:9.0'
-    compile 'org.ow2.asm:asm-commons:9.0'
-    compile 'org.ow2.asm:asm-tree:9.0'
-    compile 'org.ow2.asm:asm-util:9.0'
-    compile 'net.sf.jopt-simple:jopt-simple:6.0-alpha-3'
-    compile 'com.google.code.gson:gson:2.8.6'
-    compile 'net.minecraftforge:mergetool:1.1.0'
-    compile 'net.minecraftforge:srgutils:0.2.12'
+    implementation 'org.ow2.asm:asm:9.0'
+    implementation 'org.ow2.asm:asm-commons:9.0'
+    implementation 'org.ow2.asm:asm-tree:9.0'
+    implementation 'org.ow2.asm:asm-util:9.0'
+    implementation 'net.sf.jopt-simple:jopt-simple:6.0-alpha-3'
+    implementation 'com.google.code.gson:gson:2.8.6'
+    implementation 'net.minecraftforge:mergetool:1.1.0'
+    implementation 'net.minecraftforge:srgutils:0.4.1'
 }
 
 ext {
@@ -33,7 +33,7 @@ ext {
 
 group = 'net.minecraftforge.lex'
 version = gitVersion()
-targetCompatibility = sourceCompatibility = compileJava.sourceCompatibility = compileJava.targetCompatibility = '1.8'
+java.toolchain.languageVersion = JavaLanguageVersion.of(8)
 
 def rsplit(str, del) {
     def idx = str.lastIndexOf(del)
