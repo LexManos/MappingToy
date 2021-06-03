@@ -35,7 +35,9 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
@@ -66,6 +68,7 @@ public class JarMetadata {
 
     public static void makeMetadata(Path output, Collection<Path> libraries, IMappingFile n2o, String type, boolean obfed, boolean force) {
         Path target = output.resolve(type + "_meta.json");
+        if (type.equals("joined_a_n")) force = true;
         if (!force && Files.isRegularFile(target))
             return;
 
@@ -81,6 +84,9 @@ public class JarMetadata {
 
         for (String cls : classes)
             resolve(tree, cls, obfed, o2n, n2o);
+
+        for (String cls : classes)
+            resolveTransitive(tree, tree.getInfo(cls));
 
         Map<String, ClassInfo> data = new TreeMap<>();
         for (String cls : classes)
@@ -165,7 +171,7 @@ public class JarMetadata {
 
         if (info.methods != null) {
             MethodInfo mine = info.methods.get(mtd.getName() + mtd.getDesc());
-            if (mine != null && ((mine.getAccess() & (Opcodes.ACC_FINAL | Opcodes.ACC_PRIVATE)) == 0 || owner.equals(mtd.getOwner()))) {
+            if (mine != null && ((mine.getAccess() & (Opcodes.ACC_FINAL | Opcodes.ACC_PRIVATE)) == 0 || owner.equals(mtd.getOwnerName()))) {
                 if (mine.bouncer == null) {
                     Set<Method> owners = findOverrides(tree, mine, owner, new HashSet<>());
                     if (owners.isEmpty())
@@ -376,6 +382,69 @@ public class JarMetadata {
         }
     }
 
+    private static void resolveTransitive(Tree tree, ClassInfo cls) {
+        if (!cls.isInterface() || cls.methods == null)
+            return;
+
+        Set<ClassInfo> children = new HashSet<>();
+        for (ClassInfo info : tree.classes.values())
+            if (info != cls && tree.instanceOf(info, cls))
+                children.add(info);
+
+        for (MethodInfo myMtd : cls.methods.values()) {
+            Set<MethodInfo> overrides = new HashSet<>();
+
+            for (ClassInfo child : children) {
+                Queue<ClassInfo> que = new LinkedList<>(Arrays.asList(child));
+                Set<String> seen = new HashSet<>(Arrays.asList(child.name));
+
+                while (!que.isEmpty()) {
+                    ClassInfo c = que.poll();
+                    if (c.getSuper() != null && !seen.contains(c.getSuper())) {
+                        que.add(tree.getInfo(c.getSuper()));
+                        seen.add(c.getSuper());
+                    }
+
+                    if (c.interfaces != null) {
+                        for (String inf : c.interfaces) {
+                            if (!seen.contains(inf)) {
+                                que.add(tree.getInfo(inf));
+                                seen.add(inf);
+                            }
+                        }
+                    }
+
+                    if (c.methods != null) {
+                        for (MethodInfo mtd : c.methods.values()) {
+                            if (mtd.isStatic() || mtd.isPrivate() || mtd.getName().startsWith("<"))
+                                continue;
+                            if (!mtd.getName().equals(myMtd.getName()) || !mtd.getDesc().equals(myMtd.getDesc()))
+                                continue;
+                            overrides.add(mtd);
+                        }
+                    }
+                }
+            }
+
+            if (!overrides.isEmpty()) {
+                for (MethodInfo override : overrides) {
+                    if (!override.getOwner().isLocal()) {
+                        overrides.forEach(m -> {
+                            if (m.getOwner() != cls) {
+                                Set<Method> ovs = new TreeSet<>(m.getOverrides());
+                                ovs.add(myMtd.getMethod());
+                                m.setOverrides(ovs);
+                            }
+                            m.forceName(override.getName());
+
+                        });
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     private static class Tree {
         private Map<String, ClassInfo> classes = new HashMap<>();
         private Set<String> negative = new HashSet<>();
@@ -437,6 +506,35 @@ public class JarMetadata {
                 classes.put(cls, ret);
             }
             return ret;
+        }
+
+        public boolean instanceOf(ClassInfo child, ClassInfo target) {
+            Queue<ClassInfo> que = new LinkedList<>();
+            Set<String> seen = new HashSet<>();
+            que.add(child);
+            seen.add(child.name);
+            while (!que.isEmpty()) {
+                ClassInfo info = que.poll();
+                if (info == target)
+                    return true;
+
+                String sup = info.getSuper();
+                if (sup != null && !seen.contains(sup)) {
+                    que.add(getInfo(sup));
+                    seen.add(sup);
+                }
+
+                if (info.interfaces != null) {
+                    for (String inf : info.interfaces) {
+                        if (!seen.contains(inf)) {
+                            que.add(getInfo(inf));
+                            seen.add(inf);
+                        }
+                    }
+                }
+            }
+
+            return false;
         }
     }
 
@@ -688,7 +786,11 @@ public class JarMetadata {
                 this.parent = value;
             }
 
-            public String getOwner() {
+            public ClassInfo getOwner() {
+                return ClassInfo.this;
+            }
+
+            public String getOwnerName() {
                 return ClassInfo.this.name;
             }
 

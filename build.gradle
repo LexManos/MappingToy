@@ -16,10 +16,10 @@ repositories {
 }
 
 dependencies {
-    implementation 'org.ow2.asm:asm:9.0'
-    implementation 'org.ow2.asm:asm-commons:9.0'
-    implementation 'org.ow2.asm:asm-tree:9.0'
-    implementation 'org.ow2.asm:asm-util:9.0'
+    implementation 'org.ow2.asm:asm:9.1'
+    implementation 'org.ow2.asm:asm-commons:9.1'
+    implementation 'org.ow2.asm:asm-tree:9.1'
+    implementation 'org.ow2.asm:asm-util:9.1'
     implementation 'net.sf.jopt-simple:jopt-simple:6.0-alpha-3'
     implementation 'com.google.code.gson:gson:2.8.6'
     implementation 'net.minecraftforge:mergetool:1.1.0'
@@ -126,12 +126,15 @@ publishing {
     }
     repositories {
         maven {
-            if (project.hasProperty('forgeMavenPassword')) {
-                credentials {
-                    username project.properties.forgeMavenUser
-                    password project.properties.forgeMavenPassword
+            if (System.env.MAVEN_USER) {
+                url 'https://maven.minecraftforge.net/'
+                authentication {
+                    basic(BasicAuthentication)
                 }
-                url 'https://files.minecraftforge.net/maven/manage/upload'
+                credentials {
+                    username = System.env.MAVEN_USER ?: 'not'
+                    password = System.env.MAVEN_PASSWORD ?: 'set'
+                }
             } else {
                 url 'file://' + rootProject.file('repo').getAbsolutePath()
             }
