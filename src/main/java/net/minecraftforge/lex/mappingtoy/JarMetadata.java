@@ -68,7 +68,6 @@ public class JarMetadata {
 
     public static void makeMetadata(Path output, Collection<Path> libraries, IMappingFile n2o, String type, boolean obfed, boolean force) {
         Path target = output.resolve(type + "_meta.json");
-        if (type.equals("joined_a_n")) force = true;
         if (!force && Files.isRegularFile(target))
             return;
 
