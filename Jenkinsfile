@@ -44,7 +44,7 @@ pipeline {
             }
             post {
                 success {
-                    writeChangelog(currentBuild, 'build/changelog.txt'
+                    writeChangelog(currentBuild, 'build/changelog.txt')
                 }
             }
         }
