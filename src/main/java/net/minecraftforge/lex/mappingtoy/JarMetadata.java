@@ -668,7 +668,7 @@ public class JarMetadata {
 
         public class FieldInfo implements IAccessible {
             private final transient String name;
-            private final transient String desc;
+            private final String desc;
             private final Integer access;
             private final String signature;
             private String force;
