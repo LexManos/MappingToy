@@ -35,10 +35,9 @@ import java.util.Queue;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
-import java.util.function.Function;
 import java.util.logging.Level;
+import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
@@ -48,6 +47,7 @@ import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.Type;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.FieldNode;
 import org.objectweb.asm.tree.InvokeDynamicInsnNode;
 import org.objectweb.asm.tree.LabelNode;
@@ -58,6 +58,7 @@ import org.objectweb.asm.tree.VarInsnNode;
 
 import net.minecraftforge.lex.mappingtoy.JarMetadata.ClassInfo.FieldInfo;
 import net.minecraftforge.lex.mappingtoy.JarMetadata.ClassInfo.MethodInfo;
+import net.minecraftforge.lex.mappingtoy.JarMetadata.ClassInfo.RecordInfo;
 import net.minecraftforge.srgutils.IMappingFile;
 import net.minecraftforge.srgutils.IMappingFile.IClass;
 
@@ -65,6 +66,7 @@ public class JarMetadata {
     private static boolean DEBUG = Boolean.parseBoolean(System.getProperty("toy.debugLambdas", "false"));
     private static final Handle LAMBDA_METAFACTORY = new Handle(Opcodes.H_INVOKESTATIC, "java/lang/invoke/LambdaMetafactory", "metafactory",       "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodType;Ljava/lang/invoke/MethodHandle;Ljava/lang/invoke/MethodType;)Ljava/lang/invoke/CallSite;", false);
     private static final Handle LAMBDA_ALTMETAFACTORY = new Handle(Opcodes.H_INVOKESTATIC, "java/lang/invoke/LambdaMetafactory", "altMetafactory", "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/MethodType;[Ljava/lang/Object;)Ljava/lang/invoke/CallSite;", false);
+    private static final Handle RECORD_BOOTSTRAP = new Handle(Opcodes.H_INVOKESTATIC, "java/lang/runtime/ObjectMethods", "bootstrap", "(Ljava/lang/invoke/MethodHandles$Lookup;Ljava/lang/String;Ljava/lang/invoke/TypeDescriptor;Ljava/lang/Class;Ljava/lang/String;[Ljava/lang/invoke/MethodHandle;)Ljava/lang/Object;", false);
 
     public static void makeMetadata(Path output, Collection<Path> libraries, IMappingFile n2o, String type, boolean obfed, boolean force) {
         Path target = output.resolve(type + "_meta.json");
@@ -158,6 +160,8 @@ public class JarMetadata {
         if (!info.isAbstract()) {
             resolveAbstract(tree, info);
         }
+
+        resolveRecord(info);
 
         info.resolved = true;
     }
@@ -444,6 +448,23 @@ public class JarMetadata {
         }
     }
 
+    private static void resolveRecord(ClassInfo cls) {
+        if (!"java/lang/Record".equals(cls.superName) || cls.records == null)
+            return;
+
+        if (cls.fields == null)
+            cls.records = null;
+        else {
+            for (RecordInfo rec : cls.records) {
+                FieldInfo fld = cls.fields.get(rec.field);
+                if (fld != null && fld.getters != null)
+                    rec.methods = fld.getters.stream().map(m -> m.method.name).collect(Collectors.toList());
+                if (rec.methods != null && rec.methods.size() > 1)
+                    System.out.println("Record: " + cls.name);
+            }
+        }
+    }
+
     private static class Tree {
         private Map<String, ClassInfo> classes = new HashMap<>();
         private Set<String> negative = new HashSet<>();
@@ -596,6 +617,7 @@ public class JarMetadata {
         private final Map<String, FieldInfo> fields;
         private final Map<String, MethodInfo> methods;
         private transient boolean resolved = false;
+        private List<RecordInfo> records;
 
         private ClassInfo(ClassNode node, boolean local) {
             this.local = local;
@@ -666,12 +688,22 @@ public class JarMetadata {
             return Utils.getAccess(getAccess()) + ' ' + this.name;
         }
 
+        public void addRecord(String name, Handle handle) {
+            if (handle.getTag() != Opcodes.H_GETFIELD || !this.name.equals(handle.getOwner()))
+                return;
+
+            if (this.records == null)
+                this.records = new ArrayList<>();
+            this.records.add(new RecordInfo(name, handle.getName(), handle.getDesc()));
+        }
+
         public class FieldInfo implements IAccessible {
             private final transient String name;
             private final String desc;
             private final Integer access;
             private final String signature;
             private String force;
+            private transient List<MethodInfo> getters;
 
             private FieldInfo(FieldNode node) {
                 this.name = node.name;
@@ -692,6 +724,12 @@ public class JarMetadata {
             @Override
             public String toString() {
                 return Utils.getAccess(getAccess()) + ' ' + this.desc + ' ' + this.name;
+            }
+
+            private void addGetter(MethodInfo mtd) {
+                if (this.getters == null)
+                    this.getters = new ArrayList<>();
+                this.getters.add(mtd);
             }
         }
 
@@ -758,6 +796,52 @@ public class JarMetadata {
                     }
                 }
                 this.bouncer = bounce;
+
+                if (!this.isLambda && (node.access & Opcodes.ACC_STATIC) == 0 && this.method.desc.contains("()") && ClassInfo.this.fields != null) {
+                    AbstractInsnNode start = node.instructions.getFirst();
+                    if (start instanceof LabelNode && start.getNext() instanceof LineNumberNode)
+                        start = start.getNext().getNext();
+
+                    if (start instanceof VarInsnNode) {
+                        VarInsnNode n = (VarInsnNode)start;
+                        if (n.var == 0 && n.getOpcode() == Opcodes.ALOAD) {
+                            if (start.getNext() instanceof FieldInsnNode) {
+                                FieldInsnNode fld = (FieldInsnNode)start.getNext();
+                                if (fld.owner.equals(ClassInfo.this.name) && fld.getNext() != null) {
+                                    AbstractInsnNode ret = fld.getNext();
+                                    if (ret.getOpcode() >= Opcodes.IRETURN && ret.getOpcode() <= Opcodes.RETURN) {
+                                        FieldInfo fldI = ClassInfo.this.fields.get(fld.name);
+                                        if (fldI != null)
+                                            fldI.addGetter(this);
+                                    }
+                                }
+                            } else if ("toString".equals(node.name) && start.getNext() instanceof InvokeDynamicInsnNode) {
+                                InvokeDynamicInsnNode invoke = (InvokeDynamicInsnNode)start.getNext();
+                                Object[] args = invoke.bsmArgs;
+                                if ("toString".equals(invoke.name) &&
+                                    ("(L" + ClassInfo.this.name + ";)Ljava/lang/String;").equals(invoke.desc) &&
+                                    RECORD_BOOTSTRAP.equals(invoke.bsm) &&
+                                    args.length > 2 &&
+                                    Type.getObjectType(ClassInfo.this.name).equals(args[0]) &&
+                                    args[1] instanceof String
+                                ) {
+                                    String[] names = ((String)args[1]).split(";");
+                                    if (args.length == names.length + 2) {
+                                        for (int x = 0; x < names.length; x++) {
+                                            if (args[x + 2] instanceof Handle) {
+                                                ClassInfo.this.addRecord(names[x], (Handle)args[x + 2]);
+                                            } else {
+                                                if (ClassInfo.this.records != null)
+                                                    ClassInfo.this.records.clear();
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             @Override
@@ -808,6 +892,19 @@ public class JarMetadata {
             @Override
             public String toString() {
                 return Utils.getAccess(getAccess()) + ' ' + this.method.toString();
+            }
+        }
+
+        public class RecordInfo {
+            private final String name;
+            private final String field;
+            private final String desc;
+            private List<String> methods;
+
+            private RecordInfo(String name, String field, String desc) {
+                this.name = name;
+                this.field = field;
+                this.desc = desc;
             }
         }
     }
