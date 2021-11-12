@@ -797,7 +797,7 @@ public class JarMetadata {
                 }
                 this.bouncer = bounce;
 
-                if (!this.isLambda && (node.access & Opcodes.ACC_STATIC) == 0 && this.method.desc.contains("()") && ClassInfo.this.fields != null) {
+                if ((node.access & Opcodes.ACC_STATIC) == 0 && this.method.desc.contains("()") && ClassInfo.this.fields != null) {
                     AbstractInsnNode start = node.instructions.getFirst();
                     if (start instanceof LabelNode && start.getNext() instanceof LineNumberNode)
                         start = start.getNext().getNext();
