@@ -1,52 +1,43 @@
 plugins {
-  id 'com.github.ben-manes.versions' version '0.27.0'
-  id 'net.minecrell.licenser' version '0.4.1'
-  id 'org.ajoberstar.grgit' version '4.0.0-rc.1'
-  id 'com.github.johnrengelman.shadow' version '5.1.0'
-  id 'maven'
+  id 'com.github.ben-manes.versions' version '0.39.0'
+  id 'org.cadixdev.licenser' version '0.6.1'
+  id 'net.minecraftforge.gradleutils' version '1.+'
+  id 'com.github.johnrengelman.shadow' version '7.0.0'
   id 'maven-publish'
   id 'java'
   id 'eclipse'
   id 'idea'
 }
 
+ext {
+    ASM_VERSION = '9.2'
+}
+
 repositories {
     mavenCentral()
-    maven { url = 'https://files.minecraftforge.net/maven' }
+    maven { url = 'https://maven.minecraftforge.net/' }
 }
 
 dependencies {
-    implementation 'org.ow2.asm:asm:9.1'
-    implementation 'org.ow2.asm:asm-commons:9.1'
-    implementation 'org.ow2.asm:asm-tree:9.1'
-    implementation 'org.ow2.asm:asm-util:9.1'
+    implementation "org.ow2.asm:asm:${ASM_VERSION}"
+    implementation "org.ow2.asm:asm-commons:${ASM_VERSION}"
+    implementation "org.ow2.asm:asm-tree:${ASM_VERSION}"
+    implementation "org.ow2.asm:asm-util:${ASM_VERSION}"
     implementation 'net.sf.jopt-simple:jopt-simple:6.0-alpha-3'
-    implementation 'com.google.code.gson:gson:2.8.6'
-    implementation 'net.minecraftforge:mergetool:1.1.0'
-    implementation 'net.minecraftforge:srgutils:0.4.1'
+    implementation 'com.google.code.gson:gson:2.8.7'
+    implementation 'net.minecraftforge:mergetool:1.1.4'
+    implementation 'net.minecraftforge:srgutils:0.4.3'
 }
 
 ext {
     MAIN_CLASS = 'net.minecraftforge.lex.mappingtoy.MappingToy'
     GIT_REPO = 'LexManos/MappingToy'
+    SPEC_VERSION = gradleutils.gitInfo.tag
 }
 
 group = 'net.minecraftforge.lex'
-version = gitVersion()
+version = gradleutils.getTagOffsetBranchVersion()
 java.toolchain.languageVersion = JavaLanguageVersion.of(8)
-
-def rsplit(str, del) {
-    def idx = str.lastIndexOf(del)
-    return idx == -1 ? [str, ''] : [str.substring(0, idx), str.substring(idx+1)]
-}
-
-def gitVersion() {
-    def raw = grgit?.describe(longDescr: true, tags:true)
-    def (desc, hash) = rsplit(raw == null ? 'unknown-offset-hash' : raw, '-')
-    def (tag, offset) = rsplit(desc, '-')
-    project.ext.SPEC_VERSION = tag
-    return "${tag}.${offset}"
-}
 
 license {
   header project.file('LICENSE-header.txt')
@@ -73,7 +64,7 @@ compileJava {
 }
 
 task sourcesJar(type: Jar, dependsOn: classes) {
-    classifier = 'sources'
+    archiveClassifier = 'sources'
     from sourceSets.main.allSource
     manifest.from(MANIFEST)
 }

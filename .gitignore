@@ -1,7 +1,10 @@
 /build/
 /.gradle/
 /bin/
+/.idea/
+/out/
 /output/
+/repo/
 /.settings/
 /.classpath
 /.project
