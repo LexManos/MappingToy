@@ -449,7 +449,7 @@ public class JarMetadata {
     }
 
     private static void resolveRecord(ClassInfo cls) {
-        if (!"java/lang/Record".equals(cls.superName) || cls.records == null)
+        if (!cls.isRecord || cls.records == null)
             return;
 
         if (cls.fields == null)
@@ -610,6 +610,7 @@ public class JarMetadata {
     public static class ClassInfo implements IAccessible {
         private final transient String name;
         private final transient boolean local;
+        private final transient boolean isRecord;
         private final String superName;
         private final List<String> interfaces;
         private final Integer access;
@@ -623,6 +624,7 @@ public class JarMetadata {
             this.local = local;
             this.name = node.name;
             this.superName = "java/lang/Object".equals(node.superName) ? null : node.superName;
+            this.isRecord = "java/lang/Record".equals(this.superName);
             this.interfaces = node.interfaces != null && !node.interfaces.isEmpty() ? new ArrayList<>(node.interfaces) : null;
             this.access = node.access == 0 ? null : node.access;
             this.signature = node.signature;
@@ -688,13 +690,10 @@ public class JarMetadata {
             return Utils.getAccess(getAccess()) + ' ' + this.name;
         }
 
-        public void addRecord(String name, Handle handle) {
-            if (handle.getTag() != Opcodes.H_GETFIELD || !this.name.equals(handle.getOwner()))
-                return;
-
+        public void addRecord(String field, String desc) {
             if (this.records == null)
                 this.records = new ArrayList<>();
-            this.records.add(new RecordInfo(name, handle.getName(), handle.getDesc()));
+            this.records.add(new RecordInfo(field, desc));
         }
 
         public class FieldInfo implements IAccessible {
@@ -710,6 +709,10 @@ public class JarMetadata {
                 this.desc = node.desc;
                 this.access = node.access == 0 ? null : node.access;
                 this.signature = node.signature;
+
+                if (ClassInfo.this.isRecord && (node.access & (Opcodes.ACC_STATIC | Opcodes.ACC_FINAL)) == Opcodes.ACC_FINAL) {
+                    ClassInfo.this.addRecord(this.name, this.desc);
+                }
             }
 
             public void forceName(String name) {
@@ -797,7 +800,7 @@ public class JarMetadata {
                 }
                 this.bouncer = bounce;
 
-                if ((node.access & Opcodes.ACC_STATIC) == 0 && this.method.desc.contains("()") && ClassInfo.this.fields != null) {
+                if (ClassInfo.this.isRecord && (node.access & Opcodes.ACC_STATIC) == 0 && this.method.desc.contains("()") && ClassInfo.this.fields != null) {
                     AbstractInsnNode start = node.instructions.getFirst();
                     if (start instanceof LabelNode && start.getNext() instanceof LineNumberNode)
                         start = start.getNext().getNext();
@@ -813,29 +816,6 @@ public class JarMetadata {
                                         FieldInfo fldI = ClassInfo.this.fields.get(fld.name);
                                         if (fldI != null)
                                             fldI.addGetter(this);
-                                    }
-                                }
-                            } else if ("toString".equals(node.name) && start.getNext() instanceof InvokeDynamicInsnNode) {
-                                InvokeDynamicInsnNode invoke = (InvokeDynamicInsnNode)start.getNext();
-                                Object[] args = invoke.bsmArgs;
-                                if ("toString".equals(invoke.name) &&
-                                    ("(L" + ClassInfo.this.name + ";)Ljava/lang/String;").equals(invoke.desc) &&
-                                    RECORD_BOOTSTRAP.equals(invoke.bsm) &&
-                                    args.length > 2 &&
-                                    Type.getObjectType(ClassInfo.this.name).equals(args[0]) &&
-                                    args[1] instanceof String
-                                ) {
-                                    String[] names = ((String)args[1]).split(";");
-                                    if (args.length == names.length + 2) {
-                                        for (int x = 0; x < names.length; x++) {
-                                            if (args[x + 2] instanceof Handle) {
-                                                ClassInfo.this.addRecord(names[x], (Handle)args[x + 2]);
-                                            } else {
-                                                if (ClassInfo.this.records != null)
-                                                    ClassInfo.this.records.clear();
-                                                break;
-                                            }
-                                        }
                                     }
                                 }
                             }
@@ -896,13 +876,11 @@ public class JarMetadata {
         }
 
         public class RecordInfo {
-            private final String name;
             private final String field;
             private final String desc;
             private List<String> methods;
 
-            private RecordInfo(String name, String field, String desc) {
-                this.name = name;
+            private RecordInfo(String field, String desc) {
                 this.field = field;
                 this.desc = desc;
             }
