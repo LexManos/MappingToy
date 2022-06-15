@@ -69,8 +69,10 @@ public class Utils {
             connection.setConnectTimeout(5000);
             connection.setReadTimeout(5000);
 
+            Path etagFile = file.getParent().resolve(file.getFileName() + ".etag");
+            String foundEtag = Files.isRegularFile(etagFile) ? new String(readStreamFully(etagFile)) : "-";
             if (!force && Files.isRegularFile(file))
-                connection.setRequestProperty("If-None-Match", '"' + HashFunction.MD5.hash(file) + '"');
+                connection.setRequestProperty("If-None-Match", '"' + foundEtag + '"');
 
             connection.connect();
 
@@ -91,7 +93,11 @@ public class Utils {
                 copy(in, out);
             }
 
-            if (etag.indexOf('-') != -1) return true; //No-etag, assume valid
+            if (etag.indexOf('-') != -1) return true; //No-etag, don't store it
+
+            Files.write(etagFile, etag.getBytes());
+            
+            if (!connection.getHeaderField("server").equals("AmazonS3")) return true; // Etag is not from AmazonS3 which uses plain md5 hashes, assume valid
             String md5 = HashFunction.MD5.hash(file);
 
             if (!etag.equalsIgnoreCase(md5)) {
