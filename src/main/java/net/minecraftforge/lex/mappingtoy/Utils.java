@@ -93,11 +93,11 @@ public class Utils {
                 copy(in, out);
             }
 
-            if (etag.indexOf('-') != -1) return true; //No-etag, don't store it
+            if (etag.equals("-")) return true; //No-etag, don't store it
 
             Files.write(etagFile, etag.getBytes());
-            
-            if (!connection.getHeaderField("server").equals("AmazonS3")) return true; // Etag is not from AmazonS3 which uses plain md5 hashes, assume valid
+
+            if (!"AmazonS3".equals(connection.getHeaderField("server")) || etag.contains("-")) return true; // Etag is not from AmazonS3 which uses plain md5 hashes or the file is a multipart upload in which case the etag is the md5 hash of all parts concatenated after being decoded from hex, assume valid
             String md5 = HashFunction.MD5.hash(file);
 
             if (!etag.equalsIgnoreCase(md5)) {
