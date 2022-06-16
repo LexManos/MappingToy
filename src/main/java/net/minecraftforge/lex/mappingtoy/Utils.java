@@ -70,16 +70,14 @@ public class Utils {
             connection.setReadTimeout(5000);
 
             Path etagFile = file.getParent().resolve(file.getFileName() + ".etag");
-            String foundEtag = Files.isRegularFile(etagFile) ? new String(readStreamFully(etagFile)) : "-";
-            if (!force && Files.isRegularFile(file))
+            if (!force && Files.isRegularFile(etagFile) && Files.isRegularFile(file)) {
+                String foundEtag = Files.isRegularFile(etagFile) ? new String(readStreamFully(etagFile)) : "-";
                 connection.setRequestProperty("If-None-Match", '"' + foundEtag + '"');
-
+            }
             connection.connect();
 
             String etag = connection.getHeaderField("ETag");
-            if (etag == null)
-                etag = "-";
-            else if ((etag.startsWith("\"")) && (etag.endsWith("\"")))
+            if (etag != null && (etag.startsWith("\"")) && (etag.endsWith("\"")))
                 etag = etag.substring(1, etag.length() - 1);
 
             int response = connection.getResponseCode();
@@ -93,7 +91,7 @@ public class Utils {
                 copy(in, out);
             }
 
-            if (etag.equals("-")) return true; //No-etag, don't store it
+            if (etag == null) return true; //No-etag, don't store it
 
             Files.write(etagFile, etag.getBytes());
 
