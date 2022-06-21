@@ -27,7 +27,7 @@ import java.util.Map;
 import net.minecraftforge.srgutils.MinecraftVersion;
 
 public class ManifestJson {
-    public static final String MOJANG_URL = "https://launchermeta.mojang.com/mc/game/version_manifest.json";
+    public static final String MOJANG_URL = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
     public Map<String, String> latest;
     public List<Entry> versions;
     private Map<MinecraftVersion, Entry> entry_map;
