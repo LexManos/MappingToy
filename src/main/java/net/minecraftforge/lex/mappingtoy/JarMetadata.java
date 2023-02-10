@@ -84,6 +84,9 @@ public class JarMetadata {
             tree.load(lib, true);
 
         for (String cls : classes)
+            resolveBouncers(tree, tree.getInfo(cls));
+
+        for (String cls : classes)
             resolve(tree, cls, obfed, o2n, n2o);
 
         for (String cls : classes)
@@ -97,6 +100,24 @@ public class JarMetadata {
             Utils.writeJson(target, data);
         } catch (IOException e) {
             MappingToy.log.log(Level.SEVERE, "    Failed to save meta: " + e.toString());
+        }
+    }
+
+    private static void resolveBouncers(Tree tree, ClassInfo cls) {
+        if (cls == null || cls.methods == null)
+            return;
+        
+        for (MethodInfo mtd : cls.methods.values()) {
+            if (mtd.bouncer != null) {
+                Method target = mtd.bouncer.target;
+                ClassInfo cls2 = tree.getInfo(target.owner);
+                if (cls2 != null && cls2.methods != null) {
+                    MethodInfo m = cls2.methods.get(target.getName() + target.getDesc());
+                    if (m != null) {
+                        m.getTargetsThis().add(new Method(mtd.getOwnerName(), mtd.getName(), mtd.getDesc()));
+                    }
+                }
+            }
         }
     }
 
@@ -191,9 +212,10 @@ public class JarMetadata {
                         return owners.iterator().next(); //Just pick one...
                 }
 
-                for (MethodInfo m2 : info.methods.values()) {
-                    Method target = m2.bouncer == null ? null : m2.bouncer.target;
-                    if (target != null && mine.getOwnerName().equals(target.owner) && mine.getName().equals(target.name) && mine.getDesc().equals(target.desc)) {
+                for (Method mtd2 : mine.getTargetsThis()) {
+                    ClassInfo info2 = tree.getInfo(mtd2.owner);
+                    if (info2 != null && info2.methods != null) {
+                        MethodInfo m2 = info2.methods.get(mtd2.getName() + mtd2.getDesc());
                         if (m2.bouncer.owner != null)
                             return m2.bouncer.owner;
 
@@ -235,15 +257,16 @@ public class JarMetadata {
         if (info == null)
             return overrides;
 
-        if (info.methods != null) {
-            for (MethodInfo m : info.methods.values()) {
-                Method target = m.bouncer == null ? null : m.bouncer.target;
-                if (target != null && mtd.getOwnerName().equals(target.owner) && mtd.getName().equals(target.name) && mtd.getDesc().equals(target.desc)) {
-                    //overrides.add(new Method(info.name, m.name, m.desc)); //Don't add overrides for self-methods
-                    findOverrides(tree, m, info.name, overrides);
-                }
+        for (Method mtd2 : mtd.getTargetsThis()) {
+            ClassInfo info2 = tree.getInfo(mtd2.owner);
+            if (info2 != null && info2.methods != null) {
+                MethodInfo m = info2.methods.get(mtd2.getName() + mtd2.getDesc());
+                //overrides.add(new Method(info.name, m.name, m.desc)); //Don't add overrides for self-methods
+                findOverrides(tree, m, info.name, overrides);
             }
+        }
 
+        if (info.methods != null) {
             MethodInfo mine = info.methods.get(mtd.getName() + mtd.getDesc());
             if (mine != null && mine != mtd && (mine.getAccess() & (Opcodes.ACC_FINAL | Opcodes.ACC_PRIVATE)) == 0) {
                 if (mine.getOverrides().isEmpty()) {
@@ -308,13 +331,15 @@ public class JarMetadata {
             if (info.isLocal() && mine != null && mine != mtd && (mine.getAccess() & (Opcodes.ACC_FINAL | Opcodes.ACC_PRIVATE)) == 0)
                 return new Method(info.name, mine.getName(), mine.getDesc());
 
-            for (MethodInfo m : info.methods.values()) {
-                Method target = m.bouncer == null ? null : m.bouncer.target;
-                if (target != null && mtd.getOwnerName().equals(target.owner) && mtd.getName().equals(target.name) && mtd.getDesc().equals(target.desc)) {
-                    Method ret = findFirstParent(tree, m, info.name);
-                    if (ret != null)
-                        return ret;
-                }
+        }
+
+        for (Method mtd2 : mtd.getTargetsThis()) {
+            ClassInfo info2 = tree.getInfo(mtd2.owner);
+            if (info2 != null && info2.methods != null) {
+                MethodInfo m = info2.methods.get(mtd2.getName() + mtd2.getDesc());
+                Method ret = findFirstParent(tree, m, info.name);
+                if (ret != null)
+                    return ret;
             }
         }
 
@@ -780,6 +805,7 @@ public class JarMetadata {
             private String force;
             private Set<Method> overrides;
             private Method parent;
+            private transient Set<Method> targetsThis = new HashSet<>();
 
             private MethodInfo(MethodNode node, boolean lambda) {
                 this.method = new Method(ClassInfo.this.name, node.name, node.desc);
@@ -902,6 +928,10 @@ public class JarMetadata {
 
             public String getDesc() {
                 return this.method.getDesc();
+            }
+
+            public Set<Method> getTargetsThis() {
+                return targetsThis;
             }
 
             @Override
