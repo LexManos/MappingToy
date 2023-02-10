@@ -144,6 +144,12 @@ public class JarMetadata {
             //Synthetic Bouncers!
             for (MethodInfo mtd : info.methods.values()) {
                 if (mtd.bouncer != null) {
+                    if (!mtd.bouncer.target.owner.equals(info.name)) {
+                        Method target = findMethodContent(tree, mtd.bouncer.target);
+                        if (target != null)
+                            mtd.bouncer.setTarget(target);
+                    }
+                    
                     Method owner = walkBouncers(tree, mtd, info.name);
                     if (owner != null && !owner.owner.equals(info.name))
                         mtd.bouncer.setOwner(owner);
@@ -187,7 +193,7 @@ public class JarMetadata {
 
                 for (MethodInfo m2 : info.methods.values()) {
                     Method target = m2.bouncer == null ? null : m2.bouncer.target;
-                    if (target != null && mine.getName().equals(target.name) && mine.getDesc().equals(target.desc)) {
+                    if (target != null && mine.getOwnerName().equals(target.owner) && mine.getName().equals(target.name) && mine.getDesc().equals(target.desc)) {
                         if (m2.bouncer.owner != null)
                             return m2.bouncer.owner;
 
@@ -232,7 +238,7 @@ public class JarMetadata {
         if (info.methods != null) {
             for (MethodInfo m : info.methods.values()) {
                 Method target = m.bouncer == null ? null : m.bouncer.target;
-                if (target != null && mtd.getName().equals(target.name) && mtd.getDesc().equals(target.desc)) {
+                if (target != null && mtd.getOwnerName().equals(target.owner) && mtd.getName().equals(target.name) && mtd.getDesc().equals(target.desc)) {
                     //overrides.add(new Method(info.name, m.name, m.desc)); //Don't add overrides for self-methods
                     findOverrides(tree, m, info.name, overrides);
                 }
@@ -258,6 +264,35 @@ public class JarMetadata {
 
         return overrides;
     }
+    
+    private static Method findMethodContent(Tree tree, Method mtd) {
+        ClassInfo info = tree.getInfo(mtd.owner);
+        
+        if (info == null)
+            return null;
+        
+        MethodInfo mine = info.methods.get(mtd.getName() + mtd.getDesc());
+        if (mine != null) {
+            return new Method(info.name, mtd.getName(), mtd.getDesc());
+        }
+        
+        if (info.getSuper() != null) {
+            Method superMtd = findMethodContent(tree, new Method(info.getSuper(), mtd.getName(), mtd.getDesc()));
+            if (superMtd != null)
+                return superMtd;
+        }
+        
+        if (info.interfaces != null) {
+            for (String intf : info.interfaces) {
+                Method intMtd = findMethodContent(tree, new Method(intf, mtd.getName(), mtd.getDesc()));
+                if (intMtd != null)
+                    return intMtd;
+            }
+        }
+        
+        return null;
+        
+    }
 
     private static Method findFirstParent(Tree tree, MethodInfo mtd, String owner) {
         if (mtd.isStatic() || mtd.isPrivate() || mtd.getName().startsWith("<"))
@@ -275,7 +310,7 @@ public class JarMetadata {
 
             for (MethodInfo m : info.methods.values()) {
                 Method target = m.bouncer == null ? null : m.bouncer.target;
-                if (target != null && mtd.getName().equals(target.name) && mtd.getDesc().equals(target.desc)) {
+                if (target != null && mtd.getOwnerName().equals(target.owner) && mtd.getName().equals(target.name) && mtd.getDesc().equals(target.desc)) {
                     Method ret = findFirstParent(tree, m, info.name);
                     if (ret != null)
                         return ret;
@@ -792,7 +827,7 @@ public class JarMetadata {
                                 }
 
                                 MethodInsnNode mtd = (MethodInsnNode)end;
-                                if (end != null && mtd.owner.equals(ClassInfo.this.name) && Type.getArgumentsAndReturnSizes(node.desc) == Type.getArgumentsAndReturnSizes(mtd.desc))
+                                if (end != null && (mtd.owner.equals(ClassInfo.this.name) || mtd.owner.equals(ClassInfo.this.superName)) && Type.getArgumentsAndReturnSizes(node.desc) == Type.getArgumentsAndReturnSizes(mtd.desc))
                                     bounce = new Bounce(new Method(mtd.owner, mtd.name, mtd.desc));
                             }
                         }
@@ -932,7 +967,7 @@ public class JarMetadata {
     }
 
     private static class Bounce {
-        private final Method target;
+        private Method target;
         private Method owner;
 
         private Bounce(Method target) {
@@ -941,6 +976,10 @@ public class JarMetadata {
 
         public void setOwner(Method value) {
             this.owner = value;
+        }
+        
+        public void setTarget(Method value) {
+            this.target = value;
         }
 
         @Override
