@@ -455,7 +455,11 @@ public class JarMetadata {
                 children.add(info);
 
         for (MethodInfo myMtd : cls.methods.values()) {
+            if (myMtd.isStatic() || myMtd.isPrivate())
+                continue;
+
             Set<MethodInfo> overrides = new HashSet<>();
+            Set<MethodInfo> applyForcedName = new HashSet<>();
 
             for (ClassInfo child : children) {
                 Queue<ClassInfo> que = new LinkedList<>(Arrays.asList(child));
@@ -483,25 +487,35 @@ public class JarMetadata {
                                 continue;
                             if (!mtd.getName().equals(myMtd.getName()) || !mtd.getDesc().equals(myMtd.getDesc()))
                                 continue;
-                            overrides.add(mtd);
+                            if (!c.isInterface() || tree.instanceOf(c, cls)) {
+                                overrides.add(mtd);
+                            }
+                            applyForcedName.add(mtd);
                         }
                     }
                 }
             }
 
             if (!overrides.isEmpty()) {
-                for (MethodInfo override : overrides) {
+                for (MethodInfo m : overrides) {
+                    if (m.getOwner() != cls) {
+                        Set<Method> ovs = new TreeSet<>(m.getOverrides());
+                        ovs.add(myMtd.getMethod());
+                        m.setOverrides(ovs);
+                    }
+                }
+                
+                String forcedName = null;
+                for (MethodInfo override : applyForcedName) {
                     if (!override.getOwner().isLocal()) {
-                        overrides.forEach(m -> {
-                            if (m.getOwner() != cls) {
-                                Set<Method> ovs = new TreeSet<>(m.getOverrides());
-                                ovs.add(myMtd.getMethod());
-                                m.setOverrides(ovs);
-                            }
-                            m.forceName(override.getName());
-
-                        });
+                        forcedName = override.getName();
                         break;
+                    }
+                }
+                
+                for (MethodInfo m : applyForcedName) {
+                    if (forcedName != null) {
+                        m.forceName(forcedName);
                     }
                 }
             }
