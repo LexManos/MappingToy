@@ -1,15 +1,13 @@
+import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
+
 plugins {
-  id 'org.cadixdev.licenser' version '0.6.1'
+  id 'net.minecraftforge.licenser' version '1.0.1'
   id 'net.minecraftforge.gradleutils' version '[2.3,2.4)'
-  id 'com.github.johnrengelman.shadow' version '7.0.0'
+  id 'com.github.johnrengelman.shadow' version '8.1.1'
   id 'maven-publish'
   id 'java'
   id 'eclipse'
   id 'idea'
-}
-
-ext {
-    ASM_VERSION = '9.2'
 }
 
 repositories {
@@ -18,99 +16,68 @@ repositories {
 }
 
 dependencies {
-    implementation "org.ow2.asm:asm:${ASM_VERSION}"
-    implementation "org.ow2.asm:asm-commons:${ASM_VERSION}"
-    implementation "org.ow2.asm:asm-tree:${ASM_VERSION}"
-    implementation "org.ow2.asm:asm-util:${ASM_VERSION}"
-    implementation 'net.sf.jopt-simple:jopt-simple:6.0-alpha-3'
-    implementation 'com.google.code.gson:gson:2.8.7'
-    implementation 'net.minecraftforge:mergetool:1.1.4'
-    implementation 'net.minecraftforge:srgutils:0.5.10'
-}
-
-ext {
-    MAIN_CLASS = 'net.minecraftforge.lex.mappingtoy.MappingToy'
-    GIT_REPO = 'LexManos/MappingToy'
-    SPEC_VERSION = gradleutils.gitInfo.tag
+    implementation(libs.bundles.asm)
+    implementation(libs.jopt.simple)
+    implementation(libs.gson)
+    implementation(libs.mergetool)
+    implementation(libs.srgutils)
 }
 
 group = 'net.minecraftforge.lex'
-version = gradleutils.getTagOffsetBranchVersion()
-java.toolchain.languageVersion = JavaLanguageVersion.of(8)
+version = gradleutils.tagOffsetVersion
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(8)
+    withSourcesJar()
+}
 
 license {
   header project.file('LICENSE-header.txt')
   newLine false
 }
 
-ext {
-    MANIFEST = manifest{
-        if (MAIN_CLASS != null)
-            attributes('Main-Class': MAIN_CLASS)
-        attributes([
-            'Specification-Title':      project.name,
-            'Specification-Vendor':     'Forge Development LLC',
-            'Specification-Version':    SPEC_VERSION,
-            'Implementation-Title':     project.name,
-            'Implementation-Version':   project.version,
-            'Implementation-Vendor':    'Forge Development LLC'
-        ] as LinkedHashMap, project.group.replaceAll('\\.', '/') + '/' + project.name + '/')
-    }
-}
-
 compileJava {
     options.encoding = 'UTF-8'
 }
 
-task sourcesJar(type: Jar, dependsOn: classes) {
-    archiveClassifier = 'sources'
-    from sourceSets.main.allSource
-    manifest.from(MANIFEST)
-}
-
 artifacts {
-    archives sourcesJar
     archives shadowJar
 }
 
-jar {
-    manifest.from(MANIFEST)
+tasks.named('jar', Jar).configure {
+    manifest {
+        attributes('Main-Class': 'net.minecraftforge.lex.mappingtoy.MappingToy')
+        attributes([
+            'Specification-Title':    project.name,
+            'Specification-Vendor':  'Forge Development LLC',
+            'Specification-Version':  gradleutils.gitInfo.tag,
+            'Implementation-Title':   project.name,
+            'Implementation-Version': project.version,
+            'Implementation-Vendor': 'Forge Development LLC'
+        ] as LinkedHashMap, 'net/minecraftforge/lex/mappingtoy/')
+    }
 }
 
-shadowJar {
+tasks.named('shadowJar', ShadowJar).configure {
+    archiveClassifier = 'all'
     minimize()
-    classifier 'all'
-    manifest.from(MANIFEST)
 }
 
 publishing {
-    publications {
-        mavenJava(MavenPublication) {
-            artifact sourcesJar
-            artifact jar
-            artifact shadowJar
-            pom {
-                name = project.archivesBaseName
-                packaging = 'jar'
-                url = "https://github.com/${GIT_REPO}"
+    publications.register('mavenJava', MavenPublication) {
+        artifact sourcesJar
+        artifact jar
+        artifact shadowJar
+        pom {
+            name = project.archivesBaseName
+            packaging = 'jar'
+            
+            gradleutils.pom.setGitHubDetails(pom, 'LexManos', 'MappingToy')
+            
+            license gradleutils.pom.licenses.LGPLv2_1
 
-                scm {
-                    url = "https://github.com/${GIT_REPO}"
-                    connection = "scm:git:git://github.com/${GIT_REPO}.git"
-                    developerConnection = "scm:git:git@github.com:${GIT_REPO}.git"
-                }
-
-                issueManagement {
-                    system = 'github'
-                    url = "https://github.com/${GIT_REPO}/issues"
-                }
-
-                developers {
-                    developer {
-                        id = 'LexManos'
-                        name = 'Lex Manos'
-                    }
-                }
+            developers {
+                developer gradleutils.pom.Developers.LexManos
             }
         }
     }
