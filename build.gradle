@@ -1,6 +1,6 @@
 plugins {
   id 'org.cadixdev.licenser' version '0.6.1'
-  id 'net.minecraftforge.gradleutils' version '2.+'
+  id 'net.minecraftforge.gradleutils' version '[2.3,2.4)'
   id 'com.github.johnrengelman.shadow' version '7.0.0'
   id 'maven-publish'
   id 'java'
@@ -25,7 +25,7 @@ dependencies {
     implementation 'net.sf.jopt-simple:jopt-simple:6.0-alpha-3'
     implementation 'com.google.code.gson:gson:2.8.7'
     implementation 'net.minecraftforge:mergetool:1.1.4'
-    implementation 'net.minecraftforge:srgutils:0.4.13'
+    implementation 'net.minecraftforge:srgutils:0.5.10'
 }
 
 ext {
@@ -114,11 +114,12 @@ publishing {
             }
         }
     }
+    
     repositories {
-        maven gradleutils.getPublishingForgeMaven()
+        maven gradleutils.publishingForgeMaven
     }
 }
 
 changelog {
-    fromCommit "f753175b79b648af8c84f4df3122ecfaf9ea5870"
+    from "f753175b79b648af8c84f4df3122ecfaf9ea5870"
 }

@@ -44,8 +44,13 @@ public class ManifestJson {
         if (entry_map == null && versions != null) {
             entry_map = new HashMap<>();
             for (Entry e : versions) {
-                if ("release".equals(e.type) || "snapshot".equals(e.type))
+                if ("release".equals(e.type) || "snapshot".equals(e.type)) {
+                    try {
                         entry_map.put(MinecraftVersion.from(e.id), e);
+                    } catch (Throwable t) {
+                        // Most likely a april fools version not following spec, ignore it.
+                    }
+                }
             }
         }
         return entry_map;
